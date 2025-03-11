@@ -3,7 +3,10 @@
  */
 
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 pragma solidity 0.7.5;
+
+import "hardhat/console.sol";
 
 library SafeMath {
     function add(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -204,42 +207,15 @@ contract Ownable is IOwnable {
 
 interface ISwapV2Router {
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
-        uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external;
+    uint256 amountIn,
+    uint256 amountOutMin,
+    address[] calldata path,
+    address to,
+    uint256 deadline
+  ) external;
 }
 
-interface IERC20 {
-    function decimals() external view returns (uint8);
 
-    function balanceOf(address account) external view returns (uint256);
-
-    function transfer(
-        address recipient,
-        uint256 amount
-    ) external returns (bool);
-
-    function approve(address spender, uint256 amount) external returns (bool);
-
-    function totalSupply() external view returns (uint256);
-
-    function transferFrom(
-        address sender,
-        address recipient,
-        uint256 amount
-    ) external returns (bool);
-
-    event Transfer(address indexed from, address indexed to, uint256 value);
-
-    event Approval(
-        address indexed owner,
-        address indexed spender,
-        uint256 value
-    );
-}
 
 library SafeERC20 {
     using SafeMath for uint256;
@@ -279,6 +255,13 @@ library SafeERC20 {
         }
     }
 }
+
+interface IERC20Metadata is IERC20 {
+    function name() external view returns (string memory);
+    function symbol() external view returns (string memory);
+    function decimals() external view returns (uint8);
+}
+
 
 interface IERC20Mintable {
     function mint(uint256 amount_) external;
@@ -457,6 +440,8 @@ contract Treasury is Ownable {
         }
 
         uint value = valueOf(_token, _amount);
+        console.log("deposit value", value);
+        
         // transfer OHM needed and store amount of rewards for distribution
         send_ = value.sub(_profit);
 
@@ -695,8 +680,8 @@ contract Treasury is Ownable {
     ) public view returns (uint value_) {
         if (isReserveToken[_token]) {
             // convert amount to match OHM decimals
-            value_ = _amount.mul(10 ** IERC20(OHM).decimals()).div(
-                10 ** IERC20(_token).decimals()
+            value_ = _amount.mul(10 ** IERC20Metadata(OHM).decimals()).div(
+                10 ** IERC20Metadata(_token).decimals()
             );
         } else if (isLiquidityToken[_token]) {
             value_ = IBondCalculator(bondCalculator[_token]).valuation(
@@ -984,9 +969,17 @@ contract Treasury is Ownable {
    ) external onlyManager {
        require(isReserveToken[fromToken], "Not accepted");
        require(isReserveToken[toToken], "Not accepted");
+       require(path[0] == fromToken, "Invalid path: first token is not fromToken");
+       require(path[path.length - 1] == toToken, "Invalid path: last token is not toToken");
        require(IERC20(fromToken).balanceOf(address(this)) >= amount, "Insufficient reserves");
 
-       IERC20(fromToken).approve(swapRouter, amount);
+       IERC20(fromToken).approve(address(swapRouter), uint256(-1));
+       console.log("swapRouter:",swapRouter);
+       console.log("path:",path[0],path[1]);
+       console.log("amount:",amount);
+       console.log("amountOutMin:",amountOutMin);
+       console.log("deadline:",deadline);
+       console.log("address(this):",address(this));
 
        ISwapV2Router(swapRouter).swapExactTokensForTokensSupportingFeeOnTransferTokens(
            amount,
